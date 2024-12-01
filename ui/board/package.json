@@ -4,10 +4,9 @@
   "private": true,
   "description": "lichess.org chess utils",
   "type": "module",
-  "module": "board.js",
-  "types": "board.d.ts",
+  "module": "menu.js",
+  "types": "menu.d.ts",
   "exports": {
-    ".": "./dist/board.js",
     "./*": "./dist/*.js"
   },
   "typesVersions": {
@@ -24,7 +23,6 @@
   "author": "Thibault Duplessis",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "common": "workspace:*",
-    "snabbdom": "3.5.1"
+    "common": "workspace:*"
   }
 }

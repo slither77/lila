@@ -12,7 +12,7 @@ import lila.core.net.*
 object HTTPRequest:
 
   def isXhr(req: RequestHeader): Boolean =
-    req.headers.get("X-Requested-With") contains "XMLHttpRequest"
+    req.headers.get("X-Requested-With").contains("XMLHttpRequest")
 
   def isSynchronousHttp(req: RequestHeader) = !isXhr(req)
 
@@ -20,6 +20,9 @@ object HTTPRequest:
   def isUnsafe(req: RequestHeader) = !isSafe(req)
 
   def isRedirectable(req: RequestHeader) = isSynchronousHttp(req) && isSafe(req)
+
+  def isXhrFromEmbed(req: RequestHeader) =
+    isXhr(req) && referer(req).exists(_.contains(s"${req.host}/embed/"))
 
   private val appOrigins = List(
     "capacitor://localhost", // ios
@@ -64,7 +67,7 @@ object HTTPRequest:
 
   private val crawlerMatcher = UaMatcher:
     // spiders/crawlers
-    """Googlebot|AdsBot|Google-Read-Aloud|bingbot|BingPreview|facebookexternalhit|SemrushBot|AhrefsBot|PetalBot|Applebot|YandexBot|YandexAdNet|Twitterbot|Baiduspider|Amazonbot|Bytespider""" +
+    """Googlebot|AdsBot|Google-Read-Aloud|bingbot|BingPreview|facebookexternalhit|meta-externalagent|SemrushBot|AhrefsBot|PetalBot|Applebot|YandexBot|YandexAdNet|Twitterbot|Baiduspider|Amazonbot|Bytespider|yacybot|ImagesiftBot|ChatGLM-Spider|YisouSpider""" +
       // http libs
       """|HeadlessChrome|okhttp|axios|wget|curl|python-requests|aiohttp|commons-httpclient|python-urllib|python-httpx|Nessus"""
 
@@ -92,11 +95,11 @@ object HTTPRequest:
   def printClient(req: RequestHeader) =
     s"${ipAddress(req)} origin:${~origin(req)} referer:${~referer(req)} ua:${userAgent(req).so(_.value)}"
 
-  def bearer(req: RequestHeader): Option[Bearer] =
-    req.headers.get(HeaderNames.AUTHORIZATION).flatMap { authorization =>
-      val prefix = "Bearer "
-      authorization.startsWith(prefix).option(Bearer(authorization.stripPrefix(prefix)))
-    }
+  def bearer(req: RequestHeader): Option[Bearer] = for
+    authorization <- req.headers.get(HeaderNames.AUTHORIZATION)
+    prefix = "Bearer "
+    if authorization.startsWith(prefix)
+  yield Bearer(authorization.stripPrefix(prefix))
 
   def isOAuth(req: RequestHeader) = bearer(req).isDefined
 

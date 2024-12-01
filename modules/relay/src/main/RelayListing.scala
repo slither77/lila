@@ -1,6 +1,7 @@
 package lila.relay
 
 import reactivemongo.api.bson.*
+import monocle.syntax.all.*
 
 import lila.db.dsl.{ *, given }
 import lila.relay.RelayTour.ActiveWithSomeRounds
@@ -11,7 +12,7 @@ final class RelayListing(
 )(using Executor):
 
   import RelayListing.*
-  import BSONHandlers.{ given }
+  import BSONHandlers.{ *, given }
 
   private var spotlightCache: List[RelayTour.ActiveWithSomeRounds] = Nil
 
@@ -20,20 +21,19 @@ final class RelayListing(
   val active = cacheApi.unit[List[RelayTour.ActiveWithSomeRounds]]:
     _.refreshAfterWrite(5 seconds).buildAsyncFuture: _ =>
 
-      val roundLookup = $lookup.pipeline(
+      val roundLookup = $lookup.pipelineBC(
         from = colls.round,
         as = "round",
         local = "_id",
         foreign = "tourId",
         pipe = List(
-          $doc("$match"     -> $doc("finished" -> false)),
-          $doc("$addFields" -> $doc("sync.log" -> $arr())),
-          $doc("$sort"      -> RelayRoundRepo.sort.chrono),
-          $doc("$limit"     -> 1)
+          $doc("$match" -> RelayRoundRepo.selectors.finished(false)),
+          $doc("$sort"  -> RelayRoundRepo.sort.asc),
+          $doc("$limit" -> 1)
         )
       )
       for
-        upcoming <- upcoming.get({})
+        upcoming <- upcomingCache.get({})
         max = 100
         tourIds <- colls.tour.distinctEasy[RelayTourId, List](
           "_id",
@@ -129,14 +129,15 @@ final class RelayListing(
           doc   <- docs
           tour  <- doc.asOpt[RelayTour]
           round <- doc.getAsOpt[RelayRound]("round")
-          group = RelayListing.group.readFromOne(doc)
-        yield (tour, round, group)
+          group    = RelayListing.group.readFromOne(doc)
+          reTiered = decreaseTierOfDistantNextRound(tour, round)
+        yield (reTiered, round, group)
         sorted = tours.sortBy: (tour, round, _) =>
           (
-            !round.hasStarted,                             // ongoing tournaments first
-            0 - ~tour.tier,                                // then by tier
-            0 - ~round.crowd,                              // then by viewers
-            round.startsAt.fold(Long.MaxValue)(_.toMillis) // then by next round date
+            !round.hasStarted,                                 // ongoing tournaments first
+            0 - ~tour.tier,                                    // then by tier
+            0 - ~round.crowd,                                  // then by viewers
+            round.startsAtTime.fold(Long.MaxValue)(_.toMillis) // then by next round date
           )
         active <- sorted.parallel: (tour, round, group) =>
           defaultRoundToShow
@@ -146,12 +147,25 @@ final class RelayListing(
       yield
         spotlightCache = active
           .filter(_.tour.spotlight.exists(_.enabled))
-          .filterNot(_.display.finished)
+          .filterNot(_.display.isFinished)
           .filter: tr =>
-            tr.display.hasStarted || tr.display.startsAt.exists(_.isBefore(nowInstant.plusMinutes(30)))
+            tr.display.hasStarted || tr.display.startsAtTime.exists(_.isBefore(nowInstant.plusMinutes(30)))
         active
 
-  val upcoming = cacheApi.unit[List[RelayTour.WithLastRound]]:
+  private def decreaseTierOfDistantNextRound(tour: RelayTour, round: RelayRound): RelayTour =
+    import RelayTour.Tier.*
+    val visualTier = for
+      tier   <- tour.tier
+      nextAt <- round.startsAtTime
+      days = scalalib.time.daysBetween(nowInstant.withTimeAtStartOfDay, nextAt)
+    yield
+      if tier == BEST && days > 10 then NORMAL
+      else if tier == BEST && days > 5 then HIGH
+      else if tier == HIGH && days > 5 then NORMAL
+      else tier
+    tour.copy(tier = visualTier.orElse(tour.tier))
+
+  val upcomingCache = cacheApi.unit[List[RelayTour.WithLastRound]]:
     _.refreshAfterWrite(14 seconds).buildAsyncFuture: _ =>
       val max = 64
       colls.tour
@@ -162,15 +176,25 @@ final class RelayListing(
             PipelineOperator(group.firstLookup(colls.group)),
             Match(group.firstFilter),
             PipelineOperator:
-              $lookup.pipeline(
+              $lookup.pipelineBC(
                 from = colls.round,
                 as = "round",
                 local = "_id",
                 foreign = "tourId",
                 pipe = List(
-                  $doc("$sort"  -> $sort.asc("startsAt")),
+                  $doc("$sort"  -> RelayRoundRepo.sort.asc),
                   $doc("$limit" -> 1),
-                  $doc("$match" -> $doc("finished" -> false, "startsAt".$gte(nowInstant)))
+                  $doc(
+                    "$match" -> $doc(
+                      RelayRoundRepo.selectors.finished(false),
+                      $doc(
+                        "$or" -> $arr(
+                          $doc("startsAt".$gte(nowInstant)),
+                          $doc("startsAt".$eq(startsAfterPrevious))
+                        )
+                      )
+                    )
+                  )
                 )
               )
             ,
@@ -187,30 +211,30 @@ final class RelayListing(
         .map:
           _.sortBy: rt =>
             (
-              0 - ~rt.tour.tier,                                // tier sort
-              rt.round.startsAt.fold(Long.MaxValue)(_.toMillis) // then by next round date
+              0 - ~rt.tour.tier,                                    // tier sort
+              rt.round.startsAtTime.fold(Long.MaxValue)(_.toMillis) // then by next round date
             )
 
   val defaultRoundToShow = cacheApi[RelayTourId, Option[RelayRound]](32, "relay.lastAndNextRounds"):
     _.expireAfterWrite(5 seconds).buildAsyncFuture: tourId =>
-      val chronoSort = $doc("startsAt" -> 1, "createdAt" -> 1)
+      import RelayRoundRepo.sort
       val lastStarted = colls.round
         .find($doc("tourId" -> tourId, "startedAt".$exists(true)))
         .sort($doc("startedAt" -> -1))
         .one[RelayRound]
       val next = colls.round
-        .find($doc("tourId" -> tourId, "finished" -> false))
-        .sort(chronoSort)
+        .find(RelayRoundRepo.selectors.finished(false) ++ RelayRoundRepo.selectors.tour(tourId))
+        .sort(sort.asc)
         .one[RelayRound]
       lastStarted.zip(next).flatMap {
         case (None, _) => // no round started yet, show the first one
           colls.round
             .find($doc("tourId" -> tourId))
-            .sort(chronoSort)
+            .sort(sort.asc)
             .one[RelayRound]
         case (Some(last), Some(next)) => // show the next one if it's less than an hour away
           fuccess:
-            if next.startsAt.exists(_.isBefore(nowInstant.plusHours(1)))
+            if next.startsAtTime.exists(_.isBefore(nowInstant.plusHours(1)))
             then next.some
             else last.some
         case (Some(last), None) =>
@@ -218,6 +242,26 @@ final class RelayListing(
       }
 
 private object RelayListing:
+
+  // same logic but we have all the rounds in memory already
+  def defaultRoundToShow(trs: RelayTour.WithRounds): Option[RelayRound] =
+    if !trs.tour.active then trs.rounds.headOption
+    else
+      trs.rounds
+        .flatMap: round =>
+          round.startedAt.map(_ -> round)
+        .sortBy(-_._1.getEpochSecond)
+        .headOption
+        .map(_._2)
+        .match
+          case None => trs.rounds.headOption
+          case Some(last) =>
+            trs.rounds.find(!_.isFinished) match
+              case None => last.some
+              case Some(next) =>
+                if next.startsAtTime.exists(_.isBefore(nowInstant.plusHours(1)))
+                then next.some
+                else last.some
 
   object group:
 

@@ -1,32 +1,27 @@
-import * as path from 'node:path';
-import * as es from 'esbuild';
-import { preModule } from './build';
-import { env, errorMark, colors as c } from './main';
-import { js as jsManifest } from './manifest';
+import path from 'node:path';
+import es from 'esbuild';
+import { prePackage } from './build.ts';
+import { env, errorMark, colors as c } from './main.ts';
+import { jsManifest } from './manifest.ts';
 
 const bundles = new Map<string, string>();
 const esbuildCtx: es.BuildContext[] = [];
 
-export async function stopEsbuild() {
+export async function stopEsbuild(): Promise<void> {
   const proof = Promise.allSettled(esbuildCtx.map(x => x.dispose()));
   esbuildCtx.length = 0;
   bundles.clear();
-  return proof;
+  await proof;
 }
 
-export async function esbuild(tsc?: Promise<void>): Promise<void> {
+export async function esbuild(): Promise<void> {
   if (!env.esbuild) return;
-  try {
-    await tsc;
-  } catch (_) {
-    return; // killed
-  }
 
   const entryPoints = [];
-  for (const mod of env.building) {
-    preModule(mod);
-    for (const bundle of mod.bundles ?? []) {
-      entryPoints.push(path.join(mod.root, bundle));
+  for (const pkg of env.building) {
+    prePackage(pkg);
+    for (const bundle of pkg.bundles ?? []) {
+      entryPoints.push(path.join(pkg.root, bundle));
     }
   }
   entryPoints.sort();
@@ -37,11 +32,11 @@ export async function esbuild(tsc?: Promise<void>): Promise<void> {
     treeShaking: true,
     splitting: true,
     format: 'esm',
-    target: 'es2018',
+    target: 'es2020',
     logLevel: 'silent',
     sourcemap: !env.prod,
     minify: env.prod,
-    outdir: env.jsDir,
+    outdir: env.jsOutDir,
     entryNames: '[name].[hash]',
     chunkNames: 'common.[hash]',
     plugins: [onEndPlugin],
@@ -58,12 +53,11 @@ export async function esbuild(tsc?: Promise<void>): Promise<void> {
 const onEndPlugin = {
   name: 'onEnd',
   setup(build: es.PluginBuild) {
-    build.onEnd((result: es.BuildResult) => {
+    build.onEnd(async (result: es.BuildResult) => {
       for (const err of result.errors) esbuildMessage(err, true);
       for (const warn of result.warnings) esbuildMessage(warn);
+      if (result.errors.length === 0) jsManifest(result.metafile!);
       env.done(result.errors.length, 'esbuild');
-      if (result.errors.length) return;
-      jsManifest(result.metafile!);
     });
   },
 };

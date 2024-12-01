@@ -13,11 +13,13 @@
   "author": "T-Bone Duplexus",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "@types/audioworklet": "^0.0.54",
     "chess": "workspace:*",
     "common": "workspace:*",
-    "snabbdom": "3.5.1",
+    "game": "workspace:*",
     "vosk-browser": "^0.0.8"
+  },
+  "scripts": {
+    "build": "node --experimental-strip-types --no-warnings makeGrammar.mts"
   },
   "lichess": {
     "bundles": [
@@ -26,6 +28,9 @@
     ],
     "sync": {
       "grammar/**": "public/compiled/grammar"
-    }
+    },
+    "hashed": [
+      "compiled/grammar/*"
+    ]
   }
 }

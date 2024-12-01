@@ -110,7 +110,6 @@
   <string name="replayMode">Moda tekrarkirinê</string>
   <string name="realtimeReplay">Wextê heqîqî</string>
   <string name="byCPL">Bi CPL</string>
-  <string name="openStudy">Dersê veke</string>
   <string name="enable">Biçalakîne</string>
   <string name="bestMoveArrow">Nîşandana hemleya çêtirîn</string>
   <string name="evaluationGauge">Nîşandera nirxandinê</string>
@@ -378,7 +377,6 @@
   <string name="block">Asteng bike</string>
   <string name="blocked">Astengkirî ye</string>
   <string name="unblock">Astengiyê rake</string>
-  <string name="followsYou">Te dişopîne</string>
   <string name="xStartedFollowingY">%1$s dest bi şopandina %2$s kir</string>
   <plurals name="nbFollowers">
     <item quantity="one">%s şopîner</item>
@@ -410,9 +408,6 @@
   <string name="safeTournamentName">Ji bo pêşbirkê navekê pir ewle bibijêre.</string>
   <string name="inappropriateNameWarning">Navekê piçekî nelirê dibe ku bibe sedem ji girtina hesabê te re.</string>
   <string name="emptyTournamentName">Cihê navê vala bihêlî wê bi ketoberî naveke hosteyeke kişikê yê hêja lê were danîn.</string>
-  <string name="recommendNotTouching">Em pêşniyar dikin ku destê xwe nedî van.</string>
-  <string name="fewerPlayers">Ger tu mercên tevlîbûnê saz bikî, wê kêmtir lîzer hebin di pêşbirka te de.</string>
-  <string name="showAdvancedSettings">Sazkariyên pêşketî nîşan bide</string>
   <string name="makePrivateTournament">Tûrnûva bik taybet û gihînê jî bi şîfre tengbik</string>
   <string name="join">Tevlê bibe</string>
   <string name="withdraw">Vekişe</string>
@@ -450,8 +445,6 @@
   <string name="ifNoneLeaveEmpty">Ger nîn be, vala bihêle</string>
   <string name="profile">Profîl</string>
   <string name="editProfile">Profîlê sererast bike</string>
-  <string name="firstName">Nav</string>
-  <string name="lastName">Paşnav</string>
   <string name="biography">Biyografî</string>
   <string name="thankYou">Spas!</string>
   <string name="socialMediaLinks">Têkîliyên Medyaya Civakî</string>
@@ -489,10 +482,8 @@
   <string name="reason">Sedem</string>
   <string name="whatIsIheMatter">Mijar çi ye?</string>
   <string name="cheat">Hîle</string>
-  <string name="insult">Heqaret</string>
   <string name="troll">Troll</string>
   <string name="other">Yên din</string>
-  <string name="reportDescriptionHelp">Ji bo lîstikê/an lînk pê ve bike û îzah bike ku çi xeletî hene di hal û hereketên vî bikarhênerê de. Tenê nebêje \"ew hîle dike\", bêje me ku tê çawa gihîştiye wê encamê. Ger bi îngîlîzî binivîsînî wê zûtir hel bibe giliya te.</string>
   <string name="error.provideOneCheatedGameLink">Ji kerema xwe bi kêmanî lînkek pêşkêş bike ji bo lîstika hîlekirî.</string>
   <string name="by">ji alî %s ve</string>
   <string name="thisTopicIsNowClosed">Ev mijar vêga girtî ye.</string>

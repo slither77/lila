@@ -1,8 +1,10 @@
 import { init, classModule, attributesModule, eventListenersModule } from 'snabbdom';
-import { LobbyOpts } from './interfaces';
+import { requestIdleCallback } from 'common';
+import type { LobbyOpts } from './interfaces';
 import makeCtrl from './ctrl';
 import appView from './view/main';
 import tableView from './view/table';
+import { rotateBlogs } from './view/blog';
 
 export const patch = init([classModule, attributesModule, eventListenersModule]);
 
@@ -19,9 +21,9 @@ export default function main(opts: LobbyOpts) {
     tableVNode = patch(tableVNode, tableView(ctrl));
   }
 
-  site.requestIdleCallback(() => {
-    layoutHacks();
-    window.addEventListener('resize', layoutHacks);
+  requestIdleCallback(() => {
+    layoutChanged();
+    window.addEventListener('resize', layoutChanged);
   });
 
   return ctrl;
@@ -34,7 +36,7 @@ let cols = 0;
 
 let animationFrameId: number;
 
-const layoutHacks = () => {
+const layoutChanged = () => {
   cancelAnimationFrame(animationFrameId); // avoid more than one call per frame
   animationFrameId = requestAnimationFrame(() => {
     $('main.lobby').each(function (this: HTMLElement) {
@@ -45,5 +47,6 @@ const layoutHacks = () => {
         else $('.lobby__side .lobby__timeline').appendTo('.lobby');
       }
     });
+    rotateBlogs();
   });
 };

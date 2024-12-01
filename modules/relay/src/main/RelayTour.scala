@@ -1,15 +1,19 @@
 package lila.relay
 
 import reactivemongo.api.bson.Macros.Annotations.Key
+import io.mola.galimatias.URL
+import java.time.ZoneId
 
 import lila.core.i18n.Language
-import lila.core.misc.PicfitUrl
 import lila.core.id.ImageId
+import lila.core.misc.PicfitUrl
+import lila.core.fide.FideTC
+import lila.core.study.Visibility
 
 case class RelayTour(
     @Key("_id") id: RelayTourId,
     name: RelayTour.Name,
-    description: String,
+    info: RelayTour.Info,
     markup: Option[Markdown] = None,
     ownerId: UserId,
     createdAt: Instant,
@@ -18,13 +22,15 @@ case class RelayTour(
     live: Option[Boolean],        // a round is live, i.e. started and not finished
     syncedAt: Option[Instant],    // last time a round was synced
     spotlight: Option[RelayTour.Spotlight] = None,
-    autoLeaderboard: Boolean = true,
+    showScores: Boolean = true,
+    showRatingDiffs: Boolean = true,
     teamTable: Boolean = false,
     players: Option[RelayPlayersTextarea] = None,
     teams: Option[RelayTeamsTextarea] = None,
     image: Option[ImageId] = None,
-    pinnedStreamer: Option[UserStr] = None,
-    pinnedStreamerImage: Option[ImageId] = None
+    dates: Option[RelayTour.Dates] = None, // denormalized from round dates
+    pinnedStream: Option[RelayPinnedStream] = None,
+    note: Option[String] = None
 ):
   lazy val slug =
     val s = scalalib.StringOps.slug(name.value)
@@ -41,6 +47,11 @@ case class RelayTour(
 
   def tierIs(selector: RelayTour.Tier.Selector) =
     tier.fold(false)(_ == selector(RelayTour.Tier))
+
+  def studyVisibility: Visibility =
+    if tier.has(RelayTour.Tier.PRIVATE)
+    then Visibility.`private`
+    else Visibility.public
 
 object RelayTour:
 
@@ -74,6 +85,23 @@ object RelayTour:
     )
     type Selector = RelayTour.Tier.type => RelayTour.Tier
 
+  case class Info(
+      format: Option[String],
+      tc: Option[String],
+      fideTc: Option[FideTC],
+      location: Option[String],
+      timeZone: Option[ZoneId],
+      players: Option[String],
+      website: Option[URL],
+      standings: Option[URL]
+  ):
+    def nonEmpty          = List(format, tc, fideTc, location, players, website, standings).flatten.nonEmpty
+    override def toString = List(format, tc, fideTc, location, players).flatten.mkString(" | ")
+    lazy val fideTcOrGuess: FideTC = fideTc | FideTC.standard
+    def timeZoneOrDefault: ZoneId  = timeZone | ZoneId.systemDefault
+
+  case class Dates(start: Instant, end: Option[Instant])
+
   case class Spotlight(enabled: Boolean, language: Language, title: Option[String]):
     def isEmpty                           = !enabled && specialLanguage.isEmpty && title.isEmpty
     def specialLanguage: Option[Language] = (language != lila.core.i18n.defaultLanguage).option(language)
@@ -85,9 +113,24 @@ object RelayTour:
       display: RelayRound, // which round to show on the tour link
       link: RelayRound,    // which round to actually link to
       group: Option[RelayGroup.Name]
-  ) extends RelayRound.AndTourAndGroup
+  ) extends RelayRound.AndTourAndGroup:
+    def errors: List[String] =
+      val round = display
+      ~round.sync.log.lastErrors.some
+        .filter(_.nonEmpty)
+        .orElse:
+          (round.hasStarted && round.sync.hasUpstream && !round.sync.ongoing)
+            .option(List("Not syncing!"))
+        .orElse:
+          round.shouldHaveStarted1Hour.option:
+            List(if round.sync.hasUpstream then "Upstream has not started" else "Nothing pushed yet")
 
   case class WithLastRound(tour: RelayTour, round: RelayRound, group: Option[RelayGroup.Name])
+      extends RelayRound.AndTourAndGroup:
+    def link    = round
+    def display = round
+
+  case class WithFirstRound(tour: RelayTour, round: RelayRound, group: Option[RelayGroup.Name])
       extends RelayRound.AndTourAndGroup:
     def link    = round
     def display = round

@@ -1,11 +1,11 @@
-import * as cps from 'node:child_process';
-import * as fs from 'node:fs';
-import * as ps from 'node:process';
-import * as path from 'node:path';
+import cps from 'node:child_process';
+import fs from 'node:fs';
+import ps from 'node:process';
+import path from 'node:path';
 import clr from 'tinycolor2';
-import { env, colors as c, lines, errorMark } from './main';
-import { globArray } from './parse';
-import { css as cssManifest } from './manifest';
+import { env, colors as c, lines, errorMark } from './main.ts';
+import { globArray } from './parse.ts';
+import { cssManifest } from './manifest.ts';
 
 const colorMixMap = new Map<string, { c1: string; c2?: string; op: string; val: number }>();
 const themeColorMap = new Map<string, Map<string, clr.Instance>>();
@@ -15,7 +15,7 @@ let sassPs: cps.ChildProcessWithoutNullStreams | undefined;
 let watcher: SassWatch | undefined;
 let awaitingFullBuild: boolean | undefined = undefined;
 
-export function stopSass() {
+export function stopSass(): void {
   sassPs?.removeAllListeners();
   sassPs?.kill();
   sassPs = undefined;
@@ -29,8 +29,9 @@ export function stopSass() {
 
 export async function sass(): Promise<void> {
   if (!env.sass) return;
+  await fs.promises.mkdir(path.join(env.buildTempDir, 'css')).catch(() => {});
 
-  awaitingFullBuild ??= env.watch && env.building.length === env.modules.size;
+  awaitingFullBuild ??= env.watch && env.building.length === env.packages.size;
 
   const sources = await allSources();
   await Promise.allSettled([parseThemeColorDefs(), ...sources.map(src => parseScss(src))]);
@@ -38,15 +39,13 @@ export async function sass(): Promise<void> {
 
   if (env.watch) watcher = new SassWatch();
 
-  compile(sources, env.building.length !== env.modules.size);
+  compile(sources, env.building.length !== env.packages.size);
 
   if (!sources.length) env.done(0, 'sass');
 }
 
 export async function allSources(): Promise<string[]> {
-  return [
-    ...new Set((await globArray('./*/css/**/[^_]*.scss', { abs: false })).filter(x => !x.includes('/gen/'))),
-  ];
+  return (await globArray('./*/css/**/[^_]*.scss', { absolute: false })).filter(x => !x.includes('/gen/'));
 }
 
 async function unbuiltSources(): Promise<string[]> {
@@ -60,10 +59,17 @@ function compile(sources: string[], logAll = true) {
   if (!sources.length) return sources.length;
 
   const sassExec =
-    process.env.SASS_PATH || path.join(env.buildDir, 'dart-sass', `${ps.platform}-${ps.arch}`, 'sass');
+    process.env.SASS_PATH ||
+    fs.realpathSync(
+      path.join(env.buildDir, 'node_modules', `sass-embedded-${ps.platform}-${ps.arch}`, 'dart-sass', 'sass'),
+    );
 
+  if (!fs.existsSync(sassExec)) {
+    env.error(`Sass executable not found '${c.cyan(sassExec)}'`, 'sass');
+    env.done(1, 'sass');
+  }
   if (logAll) sources.forEach(src => env.log(`Building '${c.cyan(src)}'`, { ctx: 'sass' }));
-  else env.log(`Building css with ${sassExec}`, { ctx: 'sass' });
+  else env.log('Building', { ctx: 'sass' });
 
   const sassArgs = ['--no-error-css', '--stop-on-error', '--no-color', '--quiet', '--quiet-deps'];
   sassPs?.removeAllListeners();
@@ -130,7 +136,7 @@ async function parseScss(src: string) {
 
 // collect mixable scss color definitions from theme files
 async function parseThemeColorDefs() {
-  const themeFiles = await globArray('./common/css/theme/_*.scss', { abs: false });
+  const themeFiles = await globArray('./common/css/theme/_*.scss', { absolute: false });
   const themes: string[] = ['dark'];
   for (const themeFile of themeFiles ?? []) {
     const theme = /_([^/]+)\.scss/.exec(themeFile)?.[1];
@@ -169,12 +175,12 @@ async function buildColorMixes() {
         mix.op === 'mix'
           ? clr.mix(c2!, c1, clamp(mix.val, { min: 0, max: 100 }))
           : mix.op === 'lighten'
-          ? c1.lighten(clamp(mix.val, { min: 0, max: 100 }))
-          : mix.op === 'alpha'
-          ? c1.setAlpha(clamp(mix.val / 100, { min: 0, max: 1 }))
-          : mix.op === 'fade'
-          ? c1.setAlpha(c1.getAlpha() * (1 - clamp(mix.val / 100, { min: 0, max: 1 })))
-          : undefined;
+            ? c1.lighten(clamp(mix.val, { min: 0, max: 100 }))
+            : mix.op === 'alpha'
+              ? c1.setAlpha(clamp(mix.val / 100, { min: 0, max: 1 }))
+              : mix.op === 'fade'
+                ? c1.setAlpha(c1.getAlpha() * (1 - clamp(mix.val / 100, { min: 0, max: 1 })))
+                : undefined;
       if (mixed) colors.push(`  --m-${colorMix}: ${env.rgb ? mixed.toRgbString() : mixed.toHslString()};`);
       else env.log(`${errorMark} - invalid mix op: '${c.magenta(colorMix)}'`, { ctx: 'sass' });
     }
@@ -308,7 +314,7 @@ class SassWatch {
     if (event === 'change') {
       if (this.add([path.join(dir, srcFile)])) env.log(`File '${c.cyanBold(srcFile)}' changed`);
     } else if (event === 'rename') {
-      globArray('*.scss', { cwd: dir, abs: false }).then(files => {
+      globArray('*.scss', { cwd: dir, absolute: false }).then(files => {
         if (this.add(files.map(f => path.join(dir, f)))) {
           env.log(`Cross your fingers - directory '${c.cyanBold(dir)}' changed`, { ctx: 'sass' });
         }

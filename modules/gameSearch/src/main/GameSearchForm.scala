@@ -3,12 +3,13 @@ package lila.gameSearch
 import chess.Mode
 import play.api.data.*
 import play.api.data.Forms.*
+import smithy4s.Timestamp
+
 import java.time.LocalDate
 
 import lila.common.Form.*
 import lila.core.i18n.Translate
-import lila.search.spec.{ Sorting as SpecSorting, IntRange, DateRange, Query }
-import smithy4s.Timestamp
+import lila.search.spec.{ DateRange, IntRange, Query, Sorting as SpecSorting }
 
 final private[gameSearch] class GameSearchForm:
 
@@ -23,7 +24,7 @@ final private[gameSearch] class GameSearchForm:
         "black"  -> optional(username.historicalField)
       )(SearchPlayer.apply)(unapply),
       "winnerColor" -> optional(numberIn(FormHelpers.winnerColors)),
-      "perf"        -> optional(numberIn((PerfKey.all - PerfKey.puzzle).map(_.id.value))),
+      "perf"        -> optional(numberIn(perfKeys.map(_.id.value))),
       "source"      -> optional(numberIn(FormHelpers.sources)),
       "mode"        -> optional(numberIn(FormHelpers.modes)),
       "turnsMin"    -> optional(numberIn(FormHelpers.turns)),
@@ -53,7 +54,7 @@ final private[gameSearch] class GameSearchForm:
 private[gameSearch] object GameSearchForm:
   val dateField = optional(ISODateOrTimestamp.mapping)
 
-private[gameSearch] case class SearchData(
+case class SearchData(
     players: SearchPlayer = SearchPlayer(),
     winnerColor: Option[Int] = None,
     perf: Option[Int] = None,
@@ -91,16 +92,16 @@ private[gameSearch] case class SearchData(
     source = source,
     rated = mode.flatMap(Mode.apply).map(_.rated),
     status = status,
-    turns = IntRange(turnsMin, turnsMax).some,
-    averageRating = IntRange(ratingMin, ratingMax).some,
+    turns = IntRange(turnsMin, turnsMax),
+    averageRating = IntRange(ratingMin, ratingMax),
     hasAi = hasAi.map(_ == 1),
-    aiLevel = IntRange(aiLevelMin, aiLevelMax).some,
-    date = DateRange(dateMin.map(transform), dateMax.map(transform)).some,
-    duration = IntRange(durationMin, durationMax).some,
+    aiLevel = IntRange(aiLevelMin, aiLevelMax),
+    date = DateRange(dateMin.map(transform), dateMax.map(transform)),
+    duration = IntRange(durationMin, durationMax),
     analysed = analysed.map(_ == 1),
     whiteUser = players.cleanWhite.map(_.value),
     blackUser = players.cleanBlack.map(_.value),
-    sorting = SpecSorting(sortOrDefault.field, sortOrDefault.order).some,
+    sorting = SpecSorting(sortOrDefault.field, sortOrDefault.order),
     clockInit = clockInit,
     clockInc = clockInc
   )
@@ -109,7 +110,7 @@ private[gameSearch] case class SearchData(
 
   def nonEmptyQuery: Option[Query.Game] = query.some.filter(_.nonEmpty)
 
-private[gameSearch] case class SearchPlayer(
+case class SearchPlayer(
     a: Option[UserStr] = None,
     b: Option[UserStr] = None,
     winner: Option[UserStr] = None,
@@ -127,7 +128,7 @@ private[gameSearch] case class SearchPlayer(
 
   private def oneOf(s: Option[UserStr]) = s.map(_.id).filter(List(cleanA, cleanB).flatten.contains)
 
-private[gameSearch] case class SearchSort(
+case class SearchSort(
     field: String = Sorting.default.f,
     order: String = Sorting.default.order
 )

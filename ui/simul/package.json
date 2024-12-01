@@ -13,10 +13,12 @@
   "dependencies": {
     "chat": "workspace:*",
     "common": "workspace:*",
-    "game": "workspace:*",
-    "snabbdom": "3.5.1"
+    "game": "workspace:*"
   },
   "lichess": {
-    "bundles": "src/simul.ts"
+    "bundles": [
+      "src/simul.ts",
+      "src/simul.home.ts"
+    ]
   }
 }

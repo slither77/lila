@@ -1,13 +1,14 @@
 import * as licon from 'common/licon';
-import { looseH as h, bind, onInsert, dataIcon, MaybeVNode } from 'common/snabbdom';
-import { LogEvent } from './interfaces';
-import RelayCtrl from './relayCtrl';
+import { looseH as h, bind, onInsert, dataIcon, type MaybeVNode } from 'common/snabbdom';
+import type { LogEvent } from './interfaces';
+import type RelayCtrl from './relayCtrl';
 import { memoize } from 'common';
 import { side as studyViewSide } from '../studyView';
-import StudyCtrl from '../studyCtrl';
+import type StudyCtrl from '../studyCtrl';
 
 export default function (ctrl: RelayCtrl, study: StudyCtrl): MaybeVNode {
-  const contributor = ctrl.members.canContribute();
+  const contributor = ctrl.members.canContribute(),
+    sync = ctrl.data.sync;
   return contributor || study.data.admin
     ? h('div.relay-admin__container', [
         contributor
@@ -16,9 +17,7 @@ export default function (ctrl: RelayCtrl, study: StudyCtrl): MaybeVNode {
                 h('span.text', { attrs: dataIcon(licon.RadioTower) }, 'Broadcast manager'),
                 h('a', { attrs: { href: `/broadcast/round/${ctrl.id}/edit`, 'data-icon': licon.Gear } }),
               ]),
-              ctrl.data.sync?.url || ctrl.data.sync?.ids
-                ? (ctrl.data.sync.ongoing ? stateOn : stateOff)(ctrl)
-                : null,
+              sync?.url || sync?.ids || sync?.urls ? (sync.ongoing ? stateOn : stateOff)(ctrl) : statePush(),
               renderLog(ctrl),
             ])
           : undefined,
@@ -50,25 +49,28 @@ function renderLog(ctrl: RelayCtrl) {
 }
 
 function stateOn(ctrl: RelayCtrl) {
-  const sync = ctrl.data.sync,
-    url = sync?.url,
-    ids = sync?.ids;
+  const sync = ctrl.data.sync;
   return h(
     'div.state.on.clickable',
     { hook: bind('click', _ => ctrl.setSync(false)), attrs: dataIcon(licon.ChasingArrows) },
     [
-      h(
-        'div',
-        url
+      h('div', [
+        'Connected ',
+        ...(sync
           ? [
-              sync.delay ? `Connected with ${sync.delay}s delay` : 'Connected to source',
-              h('br'),
-              url.replace(/https?:\/\//, ''),
+              sync.delay ? `with ${sync.delay}s delay ` : null,
+              ...(sync.url
+                ? ['to source', h('br'), sync.url.replace(/https?:\/\//, '')]
+                : sync.ids
+                  ? ['to', h('br'), sync.ids.length, ' game(s)']
+                  : sync.urls
+                    ? ['to', h('br'), sync.urls.length, ' sources']
+                    : []),
+              sync.filter ? ` (round ${sync.filter})` : null,
+              sync.slices ? ` (slice ${sync.slices})` : null,
             ]
-          : ids
-          ? ['Connected to', h('br'), ids.length, ' game(s)']
-          : [],
-      ),
+          : []),
+      ]),
     ],
   );
 }
@@ -80,14 +82,16 @@ const stateOff = (ctrl: RelayCtrl) =>
     [h('div.fat', 'Click to connect')],
   );
 
-const dateFormatter = memoize(() =>
-  window.Intl && Intl.DateTimeFormat
-    ? new Intl.DateTimeFormat(document.documentElement.lang, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
-        second: 'numeric',
-      }).format
-    : (d: Date) => d.toLocaleString(),
+const statePush = () =>
+  h('div.state.push', { attrs: dataIcon(licon.UploadCloud) }, ['Listening to Broadcaster App']);
+
+const dateFormatter = memoize(
+  () =>
+    new Intl.DateTimeFormat(site.displayLocale, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+    }).format,
 );
